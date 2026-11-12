@@ -1,6 +1,6 @@
 {
   "pages_per_channel": 2,
-  "sites": ["afisha.uz", "iticket.uz", "showgo.uz", "olbilet.uz", "ticketon.uz"],
+  "sites": ["afisha.uz", "iticket.uz", "showgo.uz", "olbilet.uz", "ticketon.uz", "smuzi-quiz.com", "albertparty.com"],
   "telegram": [
     "afishauz",
     "afishauzb",
@@ -22,6 +22,12 @@
     "conect_uz",
     "muzonefest",
     "stihiafestival",
-    "visittashkent"
+    "visittashkent",
+    "aydatuda",
+    "mzgb_tash",
+    "quizplease_tashkent",
+    "shaker_tashkent",
+    "voyrazumboy",
+    "uzquiz2021"
   ]
 }

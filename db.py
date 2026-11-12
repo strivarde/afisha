@@ -68,7 +68,8 @@ def _norm(s):
 
 STOP = {"концерт", "выставка", "спектакль", "шоу", "в", "на", "и", "с", "новая", "коллекция",
          "магазине", "ташкенте", "ташкент", "toshkent", "toshkentda", "konserti", "the", "show",
-         "стендап", "stand", "up", "балет", "лекция", "мастер", "класс", "фестиваль", "вечер"}
+         "стендап", "stand", "up", "балет", "лекция", "мастер", "класс", "фестиваль", "вечер",
+         "квиз", "quiz", "kviz", "игра", "игры", "игру"}
 
 
 def _key_words(s):
@@ -105,7 +106,8 @@ def save_event(con, e, source_url, image=None):
         if _similar(row["title"], e["title"]) or (
                 e.get("venue") and row["venue"] and _similar(row["venue"], e["venue"])
                 and e.get("time") and row["time"] == e.get("time")
-                and row["category"] == e.get("category")):
+                and row["category"] == e.get("category")
+                and e.get("category") != "Игры"):     # разные квизы часто идут в одном баре в одно время
             srcs = json.loads(row["sources"])
             if source_url not in srcs:
                 srcs.append(source_url)

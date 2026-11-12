@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 import requests
+from bs4 import BeautifulSoup
 
 from extract import find_category, is_commerce
 
@@ -367,5 +368,76 @@ def showgo():
     return _future(events)
 
 
+# =================================================================== квизы
+RU_MONTHS = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5, "июн": 6, "июл": 7, "август": 8,
+             "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
+
+
+def _ru_date(day, month_word, hhmm):
+    """«12», «ноября», «19:15» → datetime (год подбирается: ближайшая будущая дата)."""
+    m = next((v for k, v in RU_MONTHS.items() if month_word.lower().startswith(k)), None)
+    if not m:
+        return None
+    today = date.today()
+    year = today.year + (1 if (today - date(today.year, m, min(int(day), 28))).days > 60 else 0)
+    h, mi = map(int, hhmm.split(":"))
+    try:
+        return datetime(year, m, int(day), h, mi)
+    except ValueError:
+        return None
+
+
+def smuzi():
+    """Смузи-квиз: игры лежат в каталоге магазина Tilda (открытый API конструктора сайтов)."""
+    api, events = "https://store.tildaapi.com/api/getproductslist/", []
+    for page in range(1, 6):
+        r = requests.get(api, params={"storepartuid": "136601224691", "recid": "596996892", "getparts": "true",
+                                      "getoptions": "true", "slice": page, "size": 36},
+                         headers={**UA, "Referer": "https://tashkent.smuzi-quiz.com/"}, timeout=30)
+        r.raise_for_status()
+        products = r.json().get("products") or []
+        for p in products:
+            # «12 ноября (ЧТ) 19:15 (Terrace100) Футбол №24»
+            m = re.match(r"\s*(\d{1,2})\s+([а-яё]+)\s*\([^)]*\)\s*(\d{1,2}:\d{2})\s*\(([^)]*)\)\s*(.+)", p.get("title") or "")
+            if not m:
+                continue
+            start = _ru_date(m.group(1), m.group(2), m.group(3))
+            if not start:
+                continue
+            chars = {c.get("title"): c.get("value") for c in p.get("characteristics") or []}
+            events.append(_event(
+                f"Квиз «Смузи»: {m.group(5).strip()}", start,
+                venue=chars.get("Место проведения") or m.group(4),
+                price=_price(p.get("price")), category="Игры",
+                description=re.sub(r"<[^>]+>", " ", p.get("descr") or ""),
+                url=p.get("url") or "https://tashkent.smuzi-quiz.com/games"))
+        if len(products) < 36:
+            break
+        time.sleep(0.5)
+    return _future(events)
+
+
+def albertparty():
+    """Albert Party / Einstein Party: блок «Ближайшие игры» на главной странице."""
+    base = "https://tash.albertparty.com"
+    text = re.sub(r"\s+", " ", BeautifulSoup(requests.get(base + "/", headers=UA, timeout=30).text, "lxml")
+                  .get_text(" ", strip=True))
+    i = text.find("Ближайшие игры")
+    block = text[i:i + 6000] if i >= 0 else ""
+    events = []
+    # «Микс №2 Место: Terrace 100 (2 этаж) вторник 24 ноября 19:00 Места есть»
+    rx = re.compile(r"([^‹›]{3,120}?)\s+Место:\s*(.+?)\s+(?:понедельник|вторник|среда|четверг|пятница|суббота|"
+                    r"воскресенье)\s+(\d{1,2})\s+([а-яё]+)\s+(\d{1,2}:\d{2})\s*(Места есть|Мест нет|Резерв|"
+                    r"Осталось[^А-Я]*|Запись закрыта)?", re.I)
+    for m in rx.finditer(block.replace("Ближайшие игры", "").replace("‹", " ")):
+        title = re.sub(r"^(Места есть|Мест нет|Резерв|Запись закрыта)\s*", "", m.group(1).strip())
+        start = _ru_date(m.group(3), m.group(4), m.group(5))
+        if start:
+            events.append(_event(f"Квиз Albert Party: {title}", start, venue=m.group(2).strip(),
+                                 category="Игры", url=base + "/"))
+    return _future(events)
+
+
 SCRAPERS = {"afisha.uz": afisha_uz, "iticket.uz": iticket, "showgo.uz": showgo,
-            "olbilet.uz": olbilet, "ticketon.uz": ticketon}
+            "olbilet.uz": olbilet, "ticketon.uz": ticketon,
+            "smuzi-quiz.com": smuzi, "albertparty.com": albertparty}

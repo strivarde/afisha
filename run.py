@@ -126,6 +126,11 @@ def main():
             discover.run(con, limit=10)        # понемногу проверяем новых кандидатов
         except Exception as ex:
             print(f"  ! автопоиск: {ex}")
+    # события, сохранённые до появления категории «Игры» (квизы, мафия…), переносим в неё
+    for r in con.execute("SELECT id, title FROM events WHERE category='Другое'").fetchall():
+        if extract.find_category(r["title"]) == "Игры":
+            con.execute("UPDATE events SET category='Игры' WHERE id=?", (r["id"],))
+    con.commit()
     print("3/3 Страница…")
     path, total = render.render(con)
     print(f"    готово: {path}  (предстоящих событий: {total})")
