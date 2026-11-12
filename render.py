@@ -63,8 +63,8 @@ def render(con):
             buy = (f'<a class="buy" href="{e(r["ticket_url"])}" target="_blank" rel="noopener">Купить билет →</a>'
                    if r["ticket_url"] else "")
             cards.append(f"""
-      <article class="card" data-start="{r['date']}" data-end="{r['end_date'] or r['date']}" data-cat="{e(r['category'])}" data-text="{e((r['title'] + ' ' + (r['description'] or '') + ' ' + (r['venue'] or '')).lower())}">
-        <div class="cat">{e(r['category'])}</div>
+      <article class="card" data-start="{r['date']}" data-end="{r['end_date'] or r['date']}" data-time="{r['time'] or ''}" data-cat="{e(r['category'])}" data-text="{e((r['title'] + ' ' + (r['description'] or '') + ' ' + (r['venue'] or '')).lower())}">
+        <div class="cat">{e(r['category'])}<span class="state"></span></div>
         <h3>{e(r['title'])}</h3>
         <div class="meta">{' · '.join(meta)}</div>
         <details><summary>Подробнее</summary><p>{desc}</p></details>
@@ -128,6 +128,14 @@ summary{cursor:pointer}
 .src a{color:var(--acc);text-decoration:none;margin-right:6px}
 .src a.buy{display:inline-block;background:var(--acc);color:#fff;padding:4px 12px;border-radius:999px;margin:0 10px 0 0;font-weight:500}
 .src a.buy:hover{opacity:.9}
+/* событие сегодня уже началось или закончилось */
+.day{display:flex;flex-direction:column}
+.day.hidden{display:none}
+.card.gone{order:1;opacity:.5}
+.card.gone .buy{display:none}
+.card .state{display:none;margin-left:8px;padding:1px 8px;border-radius:999px;background:var(--chip);
+  color:var(--mute);text-transform:none;letter-spacing:0;font-size:11px}
+.card.gone .state{display:inline-block}
 .empty{color:var(--mute)}
 .hidden{display:none}
 /* календарь */
@@ -328,6 +336,32 @@ chips.forEach(b=>b.onclick=()=>{
 const searchBox=document.querySelector('.search');
 function onSearch(){searchBox.classList.toggle('filled',q.value.length>0);apply();toResults(false)}
 q.oninput=onSearch;
+
+// Сегодняшние события, которые уже начались: бледные, без кнопки «Купить билет», в конце дня.
+// Время считаем по Ташкенту (UTC+5, без перехода на летнее время) — у посетителя может быть другой пояс.
+const ENDED_AFTER=180;   // через сколько минут после начала считаем событие завершившимся
+function tashNow(){
+  const d=new Date(Date.now()+5*3600e3);
+  return {date:d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate()),
+          min:d.getUTCHours()*60+d.getUTCMinutes()};
+}
+function markStarted(){
+  const now=tashNow();
+  cards.forEach(c=>{
+    const t=c.dataset.time;
+    // только однодневные события сегодня с известным временем (выставки на много дней не трогаем)
+    let state='';
+    if(t&&c.dataset.start===now.date&&c.dataset.end===now.date){
+      const [h,m]=t.split(':').map(Number), passed=now.min-(h*60+m);
+      if(passed>=ENDED_AFTER) state='Завершилось';
+      else if(passed>=0) state='Уже началось';
+    }
+    c.classList.toggle('gone',!!state);
+    c.querySelector('.state').textContent=state;
+  });
+}
+markStarted();
+setInterval(markStarted,60e3);
 q.onkeydown=ev=>{if(ev.key==='Escape'&&q.value){q.value='';onSearch()}};
 document.getElementById('qclear').onclick=()=>{if(!q.value){q.focus();return}q.value='';onSearch();q.focus()};
 apply();
