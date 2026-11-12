@@ -392,5 +392,11 @@ def prefilter(text, posted_at):
     if not is_candidate(text):
         return False
     ref = (posted_at or datetime.now()).date()
-    return any(d >= ref - timedelta(days=1) for d in find_dates(text, ref)) or \
+    today = date.today()
+    # нужна дата, которая ещё не прошла (и относительно поста, и относительно сегодняшнего дня)
+    floor = max(ref, today) - timedelta(days=1)
+    if any(d >= floor for d in find_dates(text, ref)):
+        return True
+    # «сегодня/завтра» имеет смысл только в свежем посте
+    return (today - ref).days <= 1 and \
         bool(re.search(r"\b(сегодня|завтра|bugun|ertaga|today|tomorrow)\b", text, re.I))
