@@ -72,9 +72,25 @@ STOP = {"концерт", "выставка", "спектакль", "шоу", "�
          "квиз", "quiz", "kviz", "игра", "игры", "игру"}
 
 
+TRANSLIT = str.maketrans({
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "j", "з": "z", "и": "i",
+    "й": "i", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t",
+    "у": "u", "ф": "f", "х": "h", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sh", "ъ": "", "ы": "i", "ь": "",
+    "э": "e", "ю": "yu", "я": "ya", "ў": "o", "қ": "k", "ғ": "g", "ҳ": "h"})
+
+
+def _latin(w):
+    """Одна запись для кириллицы и латиницы: «Разумбой» и «RAZUMBOY» → «razumboi»."""
+    w = w.lower().translate(TRANSLIT)
+    for a, b in (("dzh", "j"), ("zh", "j"), ("kh", "h"), ("x", "h"), ("y", "i"), ("w", "v"),
+                 ("q", "k"), ("ck", "k"), ("o'", "o"), ("g'", "g")):
+        w = w.replace(a, b)
+    return w
+
+
 def _key_words(s):
-    # первые 5 букв — грубо отбрасываем падежные окончания (Киркорова = Киркоров)
-    return {w[:5] for w in _norm(s).split() if w not in STOP and len(w) > 2}
+    # первые 5 букв (после перевода в латиницу) — грубо отбрасываем падежные окончания
+    return {_latin(w)[:5] for w in _norm(s).split() if w not in STOP and len(w) > 2}
 
 
 def _similar(a, b):
@@ -94,29 +110,100 @@ def _similar(a, b):
     return SequenceMatcher(None, na, nb).ratio() > 0.85
 
 
+def _origin(url):
+    """Откуда источник: «t.me/канал» или домен сайта."""
+    parts = url.split("/")
+    return f"t.me/{parts[3].lower()}" if "t.me" in parts[2] and len(parts) > 3 else parts[2]
+
+
+def _minutes(t):
+    try:
+        h, m = map(int, t.split(":"))
+        return h * 60 + m
+    except (AttributeError, ValueError):
+        return None
+
+
+# общие слова в названиях площадок — по ним одну площадку от другой не отличить
+VENUE_STOP = {_latin(w)[:5] for w in (
+    "театр teatr teatri theatre театр-студия студия studio ресторан restoran рестобар бар bar паб pub "
+    "кафе cafe клуб club галерея galereya gallery дворец saroyi palace центр markazi center centre зал "
+    "hall концертный государственный davlat академический национальный milliy ташкент toshkent tashkent "
+    "кинотеатр kinoteatr ул улица ko'chasi").split()}
+
+
+def _same_venue(a, b):
+    """Площадки сравниваем по названию (до запятой): адреса пишут по-разному."""
+    if not a or not b:
+        return False
+    if _similar(a, b):
+        return True
+    ka = _key_words(re.split(r"[,/(]", a)[0]) - VENUE_STOP
+    kb = _key_words(re.split(r"[,/(]", b)[0]) - VENUE_STOP
+    return bool(ka and kb and len(ka & kb) / min(len(ka), len(kb)) >= 0.5)
+
+
+def is_duplicate(a, b, sources_a, sources_b):
+    """Одно ли это событие (a, b — события одного дня; sources_* — их ссылки-источники)."""
+    ta, tb = _minutes(a.get("time")), _minutes(b.get("time"))
+    gap = abs(ta - tb) if ta is not None and tb is not None else None
+    same_origin = bool({_origin(s) for s in sources_a} & {_origin(s) for s in sources_b})
+    # один источник, время далеко друг от друга — разные сеансы (два спектакля в один день)
+    if gap is not None and gap > 45 and same_origin:
+        return False
+    if _similar(a["title"], b["title"]):
+        return True
+    near = gap is not None and gap <= 45
+    same_venue = _same_venue(a.get("venue"), b.get("venue"))
+    if not (near and same_venue and a.get("category") == b.get("category")):
+        return False
+    # то же место, почти то же время: дубль, если совпадает организатор — общее слово в
+    # названиях (кириллица = латиница) или тот же канал/сайт. Разные квизы в одном баре — не дубль.
+    if same_origin or (_key_words(a["title"]) & _key_words(b["title"])):
+        return True
+    # не игры: та же площадка (строгое сравнение — в Консерватории несколько залов) и ровно
+    # то же время — почти наверняка одно и то же
+    return gap == 0 and a.get("category") != "Игры" and _similar(a["venue"], b["venue"])
+
+
+def _merge_into(con, row, e, sources, image=None):
+    srcs = json.loads(row["sources"])
+    for s in sources:
+        if s not in srcs:
+            srcs.append(s)
+    con.execute("""UPDATE events SET sources=?,
+                   time=COALESCE(time, ?), venue=COALESCE(venue, ?),
+                   price=COALESCE(price, ?), image=COALESCE(image, ?),
+                   ticket_url=COALESCE(ticket_url, ?) WHERE id=?""",
+                (json.dumps(srcs), e.get("time"), e.get("venue"), e.get("price"),
+                 image or e.get("image"), e.get("ticket_url"), row["id"]))
+
+
+def dedupe(con):
+    """Склеивает дубли, которые уже лежат в базе (например, найденные до улучшения правил)."""
+    merged = 0
+    for (d,) in con.execute("SELECT DISTINCT date FROM events WHERE date >= date('now','-1 day')").fetchall():
+        rows = [dict(r) for r in con.execute("SELECT * FROM events WHERE date=? ORDER BY id", (d,))]
+        alive = []
+        for r in rows:
+            target = next((k for k in alive if is_duplicate(k, r, json.loads(k["sources"]),
+                                                             json.loads(r["sources"]))), None)
+            if target:
+                _merge_into(con, target, r, json.loads(r["sources"]))
+                target.update(dict(con.execute("SELECT * FROM events WHERE id=?", (target["id"],)).fetchone()))
+                con.execute("DELETE FROM events WHERE id=?", (r["id"],))
+                merged += 1
+            else:
+                alive.append(r)
+    con.commit()
+    return merged
+
+
 def save_event(con, e, source_url, image=None):
     """Добавляет событие или приклеивает источник к уже существующему дублю."""
     for row in con.execute("SELECT * FROM events WHERE date = ?", (e["date"],)):
-        if row["time"] and e.get("time") and row["time"] != e["time"]:
-            # один сайт, разное время в один день — разные сеансы (у разных сайтов время может
-            # отличаться для одного события: «сбор гостей» и «начало»)
-            site = source_url.split("/")[2]
-            if any(s.split("/")[2] == site for s in json.loads(row["sources"])):
-                continue
-        if _similar(row["title"], e["title"]) or (
-                e.get("venue") and row["venue"] and _similar(row["venue"], e["venue"])
-                and e.get("time") and row["time"] == e.get("time")
-                and row["category"] == e.get("category")
-                and e.get("category") != "Игры"):     # разные квизы часто идут в одном баре в одно время
-            srcs = json.loads(row["sources"])
-            if source_url not in srcs:
-                srcs.append(source_url)
-            con.execute("""UPDATE events SET sources=?,
-                           time=COALESCE(time, ?), venue=COALESCE(venue, ?),
-                           price=COALESCE(price, ?), image=COALESCE(image, ?),
-                           ticket_url=COALESCE(ticket_url, ?) WHERE id=?""",
-                        (json.dumps(srcs), e.get("time"), e.get("venue"), e.get("price"),
-                         image, e.get("ticket_url"), row["id"]))
+        if is_duplicate(dict(row), e, json.loads(row["sources"]), [source_url]):
+            _merge_into(con, row, e, [source_url], image)
             return False
     con.execute("""INSERT INTO events(title, date, end_date, time, venue, price, category,
                    description, image, sources, ticket_url) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",

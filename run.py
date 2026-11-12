@@ -131,6 +131,9 @@ def main():
         if extract.find_category(r["title"]) == "Игры":
             con.execute("UPDATE events SET category='Игры' WHERE id=?", (r["id"],))
     con.commit()
+    merged = db.dedupe(con)               # склеиваем дубли, накопившиеся в базе
+    if merged:
+        print(f"    склеено дублей: {merged}")
     print("3/3 Страница…")
     path, total = render.render(con)
     print(f"    готово: {path}  (предстоящих событий: {total})")
