@@ -153,7 +153,14 @@ summary{cursor:pointer}
 .selbar{display:none;margin-top:10px;font-size:14px;align-items:center;gap:8px}
 .selbar.on{display:flex}
 .selbar button{border:0;background:var(--chip);color:var(--ink);border-radius:999px;padding:3px 10px;cursor:pointer;font-size:13px}
-@media (max-width:560px){.quick{flex-direction:row;flex-wrap:wrap;min-width:0}.quick .chip{padding:6px 12px;font-size:13px}.cal{max-width:none}}
+@media (max-width:560px){.quick{flex-direction:row;flex-wrap:wrap;min-width:0}.quick .chip{padding:6px 12px;font-size:13px}.cal{max-width:none}
+  /* телефон: категории в одну строку с горизонтальной прокруткой — панель сверху ниже */
+  .tools{padding:8px 16px}
+  #cats{flex-wrap:nowrap;overflow-x:auto;margin:8px -16px 0;padding:0 16px 2px;scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;mask-image:linear-gradient(90deg,#000 85%,transparent)}
+  #cats::-webkit-scrollbar{display:none}
+  #cats .chip{flex:0 0 auto;white-space:nowrap}
+  .selbar{margin-top:6px}}
 </style></head><body>
 <header><h1>Афиша Ташкента</h1>
 <div class="sub">Событий: {{COUNT}} · обновлено {{UPDATED}} · собрано автоматически из Telegram и сайтов</div></header>
@@ -250,7 +257,14 @@ function setRange(a,b){
   bar.classList.toggle('on',!!a);
   if(a) document.getElementById('seltext').textContent='Показаны события: '+(a===b?human(a):human(a)+' — '+human(b));
   apply();
-  if(a) document.querySelector('main').scrollIntoView({behavior:'smooth',block:'start'});
+  if(a) toResults(true);
+}
+// прокрутить к началу результатов так, чтобы их не закрывала закреплённая панель сверху.
+// force=false — только если пользователь уже пролистал ниже начала списка
+function toResults(force){
+  const tools=document.querySelector('.tools'), main=document.querySelector('main');
+  const top=main.getBoundingClientRect().top+window.scrollY-tools.offsetHeight;
+  if(force||window.scrollY>top) window.scrollTo({top:Math.max(top,0),behavior:'smooth'});
 }
 function markQuick(k){document.querySelectorAll('.qd').forEach(x=>x.classList.toggle('on',x.dataset.q===(k||(from?'':'all'))))}
 document.querySelectorAll('.qd').forEach(b=>b.onclick=()=>{
@@ -303,11 +317,16 @@ function apply(){
   } else if(!from&&!s&&!cat) view=new Date(minView);   // фильтры сброшены — снова текущий месяц
   drawCal();
 }
-chips.forEach(b=>b.onclick=()=>{cat=b.dataset.cat;apply()});
+chips.forEach(b=>b.onclick=()=>{
+  cat=b.dataset.cat;apply();toResults(false);
+  // на телефоне строка категорий прокручивается вбок — подвинем её так, чтобы выбранная была видна
+  const row=document.getElementById('cats');
+  if(row.scrollWidth>row.clientWidth) row.scrollTo({left:b.offsetLeft-row.offsetLeft-row.clientWidth/2+b.offsetWidth/2,behavior:'smooth'});
+});
 
 // поиск: крестик слева и Esc стирают всё написанное
 const searchBox=document.querySelector('.search');
-function onSearch(){searchBox.classList.toggle('filled',q.value.length>0);apply()}
+function onSearch(){searchBox.classList.toggle('filled',q.value.length>0);apply();toResults(false)}
 q.oninput=onSearch;
 q.onkeydown=ev=>{if(ev.key==='Escape'&&q.value){q.value='';onSearch()}};
 document.getElementById('qclear').onclick=()=>{if(!q.value){q.focus();return}q.value='';onSearch();q.focus()};
