@@ -69,7 +69,11 @@ def _norm(s):
 STOP = {"концерт", "выставка", "спектакль", "шоу", "в", "на", "и", "с", "новая", "коллекция",
          "магазине", "ташкенте", "ташкент", "toshkent", "toshkentda", "konserti", "the", "show",
          "стендап", "stand", "up", "балет", "лекция", "мастер", "класс", "фестиваль", "вечер",
-         "квиз", "quiz", "kviz", "игра", "игры", "игру"}
+         "квиз", "quiz", "kviz", "игра", "игры", "игру",
+         # общие слова в названиях выездов
+         "поход", "трек", "треккинг", "trekking", "hiking", "восхождение", "вершина", "вершину",
+         "пикник", "piknik", "прогулка", "горы", "ущелье", "водопад", "cho", "qqisi", "qqisiga",
+         "ko", "tarilish", "va", "по", "из", "к", "до"}
 
 
 TRANSLIT = str.maketrans({
@@ -151,10 +155,23 @@ def is_duplicate(a, b, sources_a, sources_b):
     # один источник, время далеко друг от друга — разные сеансы (два спектакля в один день)
     if gap is not None and gap > 45 and same_origin:
         return False
+    tour = a.get("category") == b.get("category") == "Туризм"
+    if tour and not same_origin:
+        # разные клубы часто едут в одно место в один день — это разные выезды;
+        # склеиваем только перепост (почти тот же текст названия и то же время)
+        return (gap is None or gap <= 45) and \
+            SequenceMatcher(None, _norm(a["title"]), _norm(b["title"])).ratio() > 0.8
     if _similar(a["title"], b["title"]):
         return True
     near = gap is not None and gap <= 45
     same_venue = _same_venue(a.get("venue"), b.get("venue"))
+    # выезды: турклуб пишет один анонс на двух языках (время часто не указано) —
+    # тот же канал + общее слово в названии (обычно топоним: «Кунбурбука» = «Kunburbuka»)
+    if tour and (gap is None or near):
+        ka = {w for w in _key_words(a["title"]) if not w.isdigit()}
+        kb = {w for w in _key_words(b["title"]) if not w.isdigit()}
+        if ka & kb:
+            return True
     if not (near and same_venue and a.get("category") == b.get("category")):
         return False
     # то же место, почти то же время: дубль, если совпадает организатор — общее слово в
