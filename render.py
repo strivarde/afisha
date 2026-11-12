@@ -60,13 +60,15 @@ def render(con):
             if r["price"]:
                 meta.append(e(r["price"]))
             desc = e(r["description"] or "")
+            buy = (f'<a class="buy" href="{e(r["ticket_url"])}" target="_blank" rel="noopener">Купить билет →</a>'
+                   if r["ticket_url"] else "")
             cards.append(f"""
       <article class="card" data-start="{r['date']}" data-end="{r['end_date'] or r['date']}" data-cat="{e(r['category'])}" data-text="{e((r['title'] + ' ' + (r['description'] or '') + ' ' + (r['venue'] or '')).lower())}">
         <div class="cat">{e(r['category'])}</div>
         <h3>{e(r['title'])}</h3>
         <div class="meta">{' · '.join(meta)}</div>
         <details><summary>Подробнее</summary><p>{desc}</p></details>
-        <div class="src">Источник: {links}</div>
+        <div class="src">{buy}Источник: {links}</div>
       </article>""")
         parts.append(f'<section class="day" data-date="{d}"><h2>{label}</h2>{"".join(cards)}</section>')
 
@@ -124,6 +126,8 @@ details p{white-space:pre-wrap;margin:6px 0 0}
 summary{cursor:pointer}
 .src{margin-top:8px;font-size:13px;color:var(--mute)}
 .src a{color:var(--acc);text-decoration:none;margin-right:6px}
+.src a.buy{display:inline-block;background:var(--acc);color:#fff;padding:4px 12px;border-radius:999px;margin:0 10px 0 0;font-weight:500}
+.src a.buy:hover{opacity:.9}
 .empty{color:var(--mute)}
 .hidden{display:none}
 /* календарь */

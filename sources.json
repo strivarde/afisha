@@ -1,6 +1,6 @@
 {
   "pages_per_channel": 2,
-  "sites": ["afisha.uz"],
+  "sites": ["afisha.uz", "iticket.uz", "showgo.uz", "olbilet.uz", "ticketon.uz"],
   "telegram": [
     "afishauz",
     "afishauzb",

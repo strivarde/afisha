@@ -40,6 +40,9 @@ def connect():
     cols = {r[1] for r in con.execute("PRAGMA table_info(posts)")}
     if "refs" not in cols:
         con.execute("ALTER TABLE posts ADD COLUMN refs TEXT")
+    ecols = {r[1] for r in con.execute("PRAGMA table_info(events)")}
+    if "ticket_url" not in ecols:
+        con.execute("ALTER TABLE events ADD COLUMN ticket_url TEXT")    # ссылка на покупку билета
     return con
 
 
@@ -93,6 +96,12 @@ def _similar(a, b):
 def save_event(con, e, source_url, image=None):
     """Добавляет событие или приклеивает источник к уже существующему дублю."""
     for row in con.execute("SELECT * FROM events WHERE date = ?", (e["date"],)):
+        if row["time"] and e.get("time") and row["time"] != e["time"]:
+            # один сайт, разное время в один день — разные сеансы (у разных сайтов время может
+            # отличаться для одного события: «сбор гостей» и «начало»)
+            site = source_url.split("/")[2]
+            if any(s.split("/")[2] == site for s in json.loads(row["sources"])):
+                continue
         if _similar(row["title"], e["title"]) or (
                 e.get("venue") and row["venue"] and _similar(row["venue"], e["venue"])
                 and e.get("time") and row["time"] == e.get("time")
@@ -102,13 +111,14 @@ def save_event(con, e, source_url, image=None):
                 srcs.append(source_url)
             con.execute("""UPDATE events SET sources=?,
                            time=COALESCE(time, ?), venue=COALESCE(venue, ?),
-                           price=COALESCE(price, ?), image=COALESCE(image, ?) WHERE id=?""",
+                           price=COALESCE(price, ?), image=COALESCE(image, ?),
+                           ticket_url=COALESCE(ticket_url, ?) WHERE id=?""",
                         (json.dumps(srcs), e.get("time"), e.get("venue"), e.get("price"),
-                         image, row["id"]))
+                         image, e.get("ticket_url"), row["id"]))
             return False
     con.execute("""INSERT INTO events(title, date, end_date, time, venue, price, category,
-                   description, image, sources) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                   description, image, sources, ticket_url) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (e["title"], e["date"], e.get("end_date"), e.get("time"), e.get("venue"),
                  e.get("price"), e.get("category") or "Другое", e.get("description"), image,
-                 json.dumps([source_url])))
+                 json.dumps([source_url]), e.get("ticket_url")))
     return True
