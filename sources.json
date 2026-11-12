@@ -1,0 +1,27 @@
+{
+  "pages_per_channel": 2,
+  "sites": ["afisha.uz"],
+  "telegram": [
+    "afishauz",
+    "afishauzb",
+    "tashkentevents",
+    "iticket_tg",
+    "showgouz_official",
+    "ilkhomtheatre",
+    "sahnastandup",
+    "xaymaylikanal",
+    "Xayr_shousi",
+    "cca_tashkent",
+    "humanhouseuz",
+    "hhuzevent",
+    "haqiqiyproject",
+    "GalereyaNBU",
+    "artacademyuz",
+    "ACTashkent",
+    "contrast_pr",
+    "conect_uz",
+    "muzonefest",
+    "stihiafestival",
+    "visittashkent"
+  ]
+}

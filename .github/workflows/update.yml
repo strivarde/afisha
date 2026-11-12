@@ -1,0 +1,60 @@
+# Автообновление афиши на серверах GitHub и публикация сайта (GitHub Pages).
+name: Обновить афишу
+
+on:
+  schedule:
+    - cron: "15 */3 * * *"      # каждые 3 часа (время UTC)
+  workflow_dispatch: {}          # кнопка «Run workflow» для ручного запуска
+
+permissions:
+  contents: write                # сохранить базу событий обратно в репозиторий
+  pages: write
+  id-token: write
+
+concurrency:
+  group: afisha
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      TZ: Asia/Tashkent           # «сегодня» и время обновления — по Ташкенту
+      PYTHONIOENCODING: utf-8
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
+      LLM_MODEL: gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash-lite
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Установить зависимости
+        run: pip install -r requirements.txt
+
+      - name: Собрать и разобрать события
+        run: python run.py
+
+      - name: Сохранить базу событий
+        run: |
+          git config user.name "afisha-bot"
+          git config user.email "afisha-bot@users.noreply.github.com"
+          git add data/events.db
+          git diff --cached --quiet || git commit -m "Обновление афиши $(date +'%d.%m.%Y %H:%M')"
+          git push
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: output
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
